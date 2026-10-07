@@ -31,11 +31,6 @@ about a project that runs on it. Reproduce it with
 `python3 scripts/ask_jev_about_itself.py`; the raw response is in
 [`experiments/jev-self-assessment.json`](experiments/jev-self-assessment.json).
 
-Take the second number seriously. This is a toy with a concordance's manners: it
-picks a passage that is often strikingly apt, but the selection is a probability
-distribution over 31,102 verses and nothing more. It is not a commentary, it has
-no theology, and it does not know what any verse means.
-
 ## How it works
 
 [**Jev**](https://openrouter.ai/typesafe/jev-1.13) is a System One decision model
