@@ -23,6 +23,7 @@ import pathlib
 import sys
 import threading
 import time
+import traceback
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -313,6 +314,9 @@ class Handler(BaseHTTPRequestHandler):
                 payload["span_override"] = span_override
             return self._send_json(200, payload)
         except JevError as exc:
+            # JevError messages are ours and describe the failure usefully, so
+            # they are returned as-is. The key-file path is the one exception:
+            # it can be a genuine configuration problem worth naming.
             hint = None
             if "OPENROUTER_API_KEY" in str(exc):
                 hint = (
@@ -321,9 +325,16 @@ class Handler(BaseHTTPRequestHandler):
                 )
             return self._error(502, str(exc), hint)
         except (KeyError, ValueError) as exc:
+            # These are raised by our own corpus/argument handling and are safe to
+            # quote: they name a book, chapter, or verse, nothing internal.
             return self._error(500, f"could not resolve the question: {exc}")
         except Exception as exc:  # noqa: BLE001 - report, do not crash the server
-            return self._error(500, f"unexpected error: {exc!r}")
+            # Anything else is unexpected: a bug, or a failure in a library. The
+            # raw repr can carry the store path the process runs from, which is
+            # an internal detail worth nothing to a caller, so it goes to the log
+            # and the client gets a generic message.
+            traceback.print_exc()
+            return self._error(500, "something went wrong handling that question")
         finally:
             self.server.gate.release()
 
