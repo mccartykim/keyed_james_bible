@@ -15,6 +15,27 @@ Nothing here generates scripture. The question is *keyed* into the structure of
 the Bible — book, chapter, verse — and the passage is then clipped verbatim from
 a local copy of the KJV.
 
+## Is this blasphemy or a useful Bible study tool?
+
+I wasn't sure, so I asked Jev — feeding it this project's own source code and
+asking two yes/no questions in one request:
+
+| question | P(yes) | lean |
+| --- | --- | --- |
+| Is it blasphemous? | **0.07** | 0.86 — leans no |
+| Is it a useful Bible study tool? | **0.33** | 0.34 — leans no |
+
+So: probably not blasphemy, and probably not a useful Bible study tool either.
+Which is its own kind of review from a model that has no idea it is being asked
+about a project that runs on it. Reproduce it with
+`python3 scripts/ask_jev_about_itself.py`; the raw response is in
+[`experiments/jev-self-assessment.json`](experiments/jev-self-assessment.json).
+
+Take the second number seriously. This is a toy with a concordance's manners: it
+picks a passage that is often strikingly apt, but the selection is a probability
+distribution over 31,102 verses and nothing more. It is not a commentary, it has
+no theology, and it does not know what any verse means.
+
 ## How it works
 
 [**Jev**](https://openrouter.ai/typesafe/jev-1.13) is a System One decision model
@@ -125,6 +146,7 @@ web/                 the page: no build step, no framework
 scripts/
   build_corpus.py    corpus normalization + structural assertions
   showcase.py        run a batch of questions with a cost/confidence summary
+  ask_jev_about_itself.py  feed Jev this project's source and ask what it is
   experiment_*.py    the harnesses used to measure Jev's behaviour
 docs/how-it-keys.md  the design, in diagrams
 ```

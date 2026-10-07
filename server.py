@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import sys
 import threading
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -41,6 +43,86 @@ STATIC_ROUTES: dict[str, tuple[str, str]] = {
 
 MAX_QUESTION_CHARS = 500
 
+# Sizing for the intended load: a couple of dozen people asking questions at
+# once. Each answer costs three Jev calls and takes about 0.7 s, and a request
+# holds a slot for that whole time, so concurrency needs to cover simultaneous
+# questions, not their rate. The machine itself (24 threads, fast link) can
+# absorb far more than this.
+DEFAULT_MAX_CONCURRENCY = 20
+
+# The rate limits below are deliberately conservative, and they bound SPEND
+# rather than load. Only a genuinely new question costs anything (~$0.00017);
+# cached questions and bad requests are free and bypass these limits entirely.
+# So the ceiling is what a runaway script pointed at the endpoint could bill:
+#
+#   60 questions/min x $0.00017  ~=  $0.010/min  ~=  $0.61/hour
+#
+# i.e. roughly $15/day if something sustained it around the clock. These numbers
+# are not what stops a determined client — anyone can stay under any rate limit —
+# they stop an unattended script from quietly running up a bill. The real
+# backstop is a spend limit on the OpenRouter key itself.
+DEFAULT_BURST = 10  # questions one client may fire back to back
+DEFAULT_PER_MINUTE = 10.0  # sustained per client
+DEFAULT_GLOBAL_BURST = 30  # questions the whole service may absorb at once
+DEFAULT_GLOBAL_PER_MINUTE = 60.0  # sustained across all clients
+
+
+class TokenBucket:
+    """Token buckets keyed by client, refilled continuously.
+
+    A bucket starts full, so a burst up to `burst` passes immediately and the
+    sustained rate settles at `per_minute`. Thread-safe: the server is threaded,
+    so every read-modify-write of a bucket happens under one lock.
+    """
+
+    def __init__(self, burst: float, per_minute: float, max_keys: int = 4096) -> None:
+        self.burst = float(burst)
+        self.rate = per_minute / 60.0
+        self.max_keys = max_keys
+        self._buckets: dict[str, tuple[float, float]] = {}
+        self._lock = threading.Lock()
+
+    def take(self, key: str) -> tuple[bool, float]:
+        """Spend one token. Returns (allowed, seconds_until_retry)."""
+        now = time.monotonic()
+        with self._lock:
+            tokens, last = self._buckets.get(key, (self.burst, now))
+            tokens = min(self.burst, tokens + (now - last) * self.rate)
+
+            if tokens >= 1.0:
+                self._buckets[key] = (tokens - 1.0, now)
+                return True, 0.0
+
+            self._buckets[key] = (tokens, now)
+            wait = (1.0 - tokens) / self.rate if self.rate > 0 else 60.0
+            self._maybe_prune(now)
+            return False, wait
+
+    def _maybe_prune(self, now: float) -> None:
+        """Drop buckets that have refilled, so a flood of client IPs cannot grow
+        the table without bound. Called while the lock is held."""
+        if len(self._buckets) <= self.max_keys:
+            return
+        idle = self.burst / self.rate if self.rate > 0 else 60.0
+        for key in [k for k, (_, last) in self._buckets.items() if now - last > idle]:
+            del self._buckets[key]
+
+
+def client_ip(handler: BaseHTTPRequestHandler) -> str:
+    """Best-effort client address.
+
+    Behind the reverse proxy every request arrives from Caddy on loopback, so
+    the socket address would collapse all clients into one bucket and make the
+    per-client limit meaningless. Caddy sets X-Forwarded-For, whose first entry
+    is the original client.
+    """
+    forwarded = handler.headers.get("X-Forwarded-For")
+    if forwarded:
+        first = forwarded.split(",")[0].strip()
+        if first:
+            return first
+    return handler.client_address[0]
+
 
 class Service(ThreadingHTTPServer):
     """HTTP server that owns one resolver and bounds concurrent Jev calls."""
@@ -48,10 +130,21 @@ class Service(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, address, resolver: Resolver, max_concurrency: int = 8):
+    def __init__(
+        self,
+        address,
+        resolver: Resolver,
+        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+        burst: float = DEFAULT_BURST,
+        per_minute: float = DEFAULT_PER_MINUTE,
+        global_burst: float = DEFAULT_GLOBAL_BURST,
+        global_per_minute: float = DEFAULT_GLOBAL_PER_MINUTE,
+    ):
         super().__init__(address, Handler)
         self.resolver = resolver
         self.gate = threading.BoundedSemaphore(max_concurrency)
+        self.per_client = TokenBucket(burst, per_minute)
+        self.global_limiter = TokenBucket(global_burst, global_per_minute)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -78,6 +171,26 @@ class Handler(BaseHTTPRequestHandler):
         if hint:
             payload["hint"] = hint
         self._send_json(status, payload)
+
+    def _too_many(self, retry_after: float, message: str) -> None:
+        """Answer 429 with a Retry-After, so a client knows when to come back."""
+        seconds = max(1, int(retry_after + 0.5))
+        body = json.dumps(
+            {
+                "error": message,
+                "retry_after": seconds,
+                "hint": f"try again in about {seconds}s",
+            },
+            ensure_ascii=False,
+        ).encode()
+        self.send_response(429)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Retry-After", str(seconds))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
 
     def log_message(self, fmt: str, *args) -> None:
         sys.stderr.write(f"{self.address_string()} {fmt % args}\n")
@@ -155,6 +268,17 @@ class Handler(BaseHTTPRequestHandler):
                 400, f"question is too long (max {MAX_QUESTION_CHARS} characters)"
             )
 
+        # Rate limits apply only to work that can cost money. Cached answers and
+        # bad requests are free, so charging tokens for them would penalise
+        # legitimate repeat use.
+        if not fresh:
+            allowed, retry_after = self.server.global_limiter.take("global")
+            if not allowed:
+                return self._too_many(retry_after, "the service is busy right now")
+            allowed, retry_after = self.server.per_client.take(client_ip(self))
+            if not allowed:
+                return self._too_many(retry_after, "too many questions at once")
+
         span_override: int | None = None
         if span not in (None, ""):
             try:
@@ -210,6 +334,38 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=8765, help="default 8765")
     parser.add_argument("--no-cache", action="store_true", help="do not persist mappings")
     parser.add_argument("--model", default=None, help="override the Jev model id")
+    parser.add_argument(
+        "--max-concurrency",
+        type=int,
+        default=DEFAULT_MAX_CONCURRENCY,
+        help=f"simultaneous Jev-backed questions (default {DEFAULT_MAX_CONCURRENCY})",
+    )
+    parser.add_argument(
+        "--burst",
+        type=int,
+        default=DEFAULT_BURST,
+        help=f"questions one client may fire back to back (default {DEFAULT_BURST})",
+    )
+    parser.add_argument(
+        "--per-minute",
+        type=float,
+        default=DEFAULT_PER_MINUTE,
+        help=f"sustained questions per minute per client (default {DEFAULT_PER_MINUTE:.0f})",
+    )
+    parser.add_argument(
+        "--global-burst",
+        type=int,
+        default=DEFAULT_GLOBAL_BURST,
+        help=f"questions the whole service absorbs at once "
+        f"(default {DEFAULT_GLOBAL_BURST})",
+    )
+    parser.add_argument(
+        "--global-per-minute",
+        type=float,
+        default=DEFAULT_GLOBAL_PER_MINUTE,
+        help=f"sustained questions per minute across all clients "
+        f"(default {DEFAULT_GLOBAL_PER_MINUTE:.0f})",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -230,13 +386,27 @@ def main(argv: list[str] | None = None) -> int:
         print("         the page will load, but questions will fail.", file=sys.stderr)
 
     corpus = resolver.corpus
-    server = Service((args.host, args.port), resolver)
+    server = Service(
+        (args.host, args.port),
+        resolver,
+        max_concurrency=args.max_concurrency,
+        burst=args.burst,
+        per_minute=args.per_minute,
+        global_burst=args.global_burst,
+        global_per_minute=args.global_per_minute,
+    )
     print(f"keyed james bible on http://{args.host}:{args.port}")
     print(
         f"  corpus: {len(corpus.books)} books, {corpus.chapter_total} chapters, "
         f"{corpus.verse_total} verses"
     )
     print(f"  model:  {resolver.client.model}")
+    print(
+        f"  limits: {args.max_concurrency} concurrent · "
+        f"{args.burst}/{args.per_minute:.0f} per client · "
+        f"{args.global_burst}/{args.global_per_minute:.0f} overall "
+        f"(burst/per-minute; cached questions are free)"
+    )
     try:
         server.serve_forever()
     except KeyboardInterrupt:

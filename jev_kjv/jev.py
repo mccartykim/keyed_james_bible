@@ -51,6 +51,27 @@ class ChoiceAnswer:
 
 
 @dataclass(frozen=True)
+class NoulAnswer:
+    """The answer to a single Noul question: the probability that it is true.
+
+    Unlike Choice, there is no selected option and no confidence value — a Noul
+    is one number in [0, 1]. Values near 0.5 mean the model had no lean.
+    """
+
+    noul: float
+
+    @property
+    def is_yes(self) -> bool:
+        """Whether the answer leans yes, i.e. above even odds."""
+        return self.noul > 0.5
+
+    @property
+    def lean(self) -> float:
+        """Distance from even odds: 0 at a coin flip, 1 at certainty."""
+        return abs(self.noul - 0.5) * 2
+
+
+@dataclass(frozen=True)
 class Usage:
     input_tokens: int
     output_tokens: int
@@ -59,7 +80,7 @@ class Usage:
 
 @dataclass(frozen=True)
 class DecisionResult:
-    answers: dict[str, ChoiceAnswer]
+    answers: dict[str, ChoiceAnswer | NoulAnswer]
     usage: Usage
     model: str
     request_id: str
@@ -67,12 +88,26 @@ class DecisionResult:
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     def choice(self, question_id: str) -> ChoiceAnswer:
-        try:
-            return self.answers[question_id]
-        except KeyError:
+        """The Choice answer for a question id, or raise if it is not a Choice."""
+        answer = self.answers.get(question_id)
+        if answer is None:
             raise JevError(
                 f"no answer for question {question_id!r}; got {sorted(self.answers)}"
-            ) from None
+            )
+        if not isinstance(answer, ChoiceAnswer):
+            raise JevError(f"question {question_id!r} is not a Choice answer")
+        return answer
+
+    def noul(self, question_id: str) -> NoulAnswer:
+        """The Noul answer for a question id, or raise if it is not a Noul."""
+        answer = self.answers.get(question_id)
+        if answer is None:
+            raise JevError(
+                f"no answer for question {question_id!r}; got {sorted(self.answers)}"
+            )
+        if not isinstance(answer, NoulAnswer):
+            raise JevError(f"question {question_id!r} is not a Noul answer")
+        return answer
 
 
 def _load_key_from_dotenv() -> str | None:
@@ -231,19 +266,41 @@ class JevClient:
             },
         )
 
+    def noul(
+        self,
+        state: Any,
+        instructions: str,
+        criteria: dict[str, str] | None = None,
+        question_id: str = "noul",
+    ) -> DecisionResult:
+        """Ask a single yes/no question. Returns the full result for usage data.
+
+        `criteria` describes what would make the answer true and false. It is
+        optional in the API but worth giving: it is where a vague question gets
+        pinned down.
+        """
+        question: dict[str, Any] = {"type": "noul", "instructions": instructions}
+        if criteria:
+            question["criteria"] = criteria
+        return self.ask(state, {question_id: question})
+
     @staticmethod
     def _parse(raw: dict[str, Any], latency_ms: int) -> DecisionResult:
-        answers: dict[str, ChoiceAnswer] = {}
+        answers: dict[str, ChoiceAnswer | NoulAnswer] = {}
         for name, answer in raw.get("answers", {}).items():
-            if answer.get("type") != "choice":
-                continue
-            answers[name] = ChoiceAnswer(
-                choice=answer["choice"],
-                confidence=float(answer.get("confidence", 0.0)),
-                probabilities={
-                    k: float(v) for k, v in answer.get("probabilities", {}).items()
-                },
-            )
+            kind = answer.get("type")
+            if kind == "choice":
+                answers[name] = ChoiceAnswer(
+                    choice=answer["choice"],
+                    confidence=float(answer.get("confidence", 0.0)),
+                    probabilities={
+                        k: float(v) for k, v in answer.get("probabilities", {}).items()
+                    },
+                )
+            elif kind == "noul":
+                answers[name] = NoulAnswer(noul=float(answer["noul"]))
+            # Score answers are not used by this project and are skipped rather
+            # than guessed at.
 
         usage = raw.get("usage", {})
         return DecisionResult(

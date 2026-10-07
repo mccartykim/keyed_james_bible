@@ -9,4 +9,6 @@ __pycache__/
 result
 .direnv/
 .venv/
+# Measurement scratch, except the Jev self-assessment the README cites.
 experiments/
+!experiments/jev-self-assessment.json

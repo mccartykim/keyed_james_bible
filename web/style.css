@@ -206,6 +206,15 @@ footer {
 
 footer a { color: var(--dim); }
 
+footer .note {
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--rule);
+  max-width: 38rem;
+}
+
+footer .note strong { color: var(--ink); font-weight: 500; }
+
 @media (max-width: 30rem) {
   body { padding: 2rem 1rem 3rem; font-size: 16px; }
   form { flex-direction: column; }
