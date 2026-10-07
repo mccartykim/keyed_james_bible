@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>keyed james bible</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>keyed james bible</h1>
+    <p class="tagline">
+      ask a question. it gets keyed into the structure of the KJV —
+      book, chapter, verse — and the passage comes back.
+    </p>
+  </header>
+
+  <form id="ask" autocomplete="off">
+    <input id="q" name="q" type="text" maxlength="500"
+           placeholder="Why do bad things happen to good people?" required>
+    <button type="submit">ask</button>
+  </form>
+
+  <p class="examples">
+    <span>try:</span>
+    <button type="button" class="ex">What happens after I die?</button>
+    <button type="button" class="ex">Is it wrong to be rich?</button>
+    <button type="button" class="ex">What should I do when I am afraid?</button>
+  </p>
+
+  <section id="out" hidden>
+    <div class="answer">
+      <h2 id="reference"></h2>
+      <div class="verses" id="verses"></div>
+      <p class="full" id="full"></p>
+    </div>
+
+    <details class="trace" open>
+      <summary>how it was keyed</summary>
+      <table id="levels"></table>
+    </details>
+
+    <p class="meta" id="meta"></p>
+  </section>
+
+  <section id="status" class="status" hidden></section>
+
+  <footer>
+    <p>
+      Verse selection is done by <a href="https://openrouter.ai/typesafe/jev-1.13">Jev</a>,
+      which returns probabilities over options rather than text.
+      The verse text is clipped from a local copy of the King James Version (public domain).
+      No verses are generated.
+    </p>
+  </footer>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

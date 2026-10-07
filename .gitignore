@@ -1,0 +1,12 @@
+# The OpenRouter key must never be committed.
+.env
+# Built corpus: produced by scripts/build_corpus.py at build time.
+data/kjv.json
+# Resolved mappings, if the cache lands next to the source in dev.
+data/cache.json
+__pycache__/
+*.pyc
+result
+.direnv/
+.venv/
+experiments/

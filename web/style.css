@@ -1,0 +1,213 @@
+:root {
+  --bg: #12100d;
+  --panel: #1b1815;
+  --ink: #e8e2d6;
+  --dim: #8b8272;
+  --rule: #2e2924;
+  --accent: #c9a227;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 3rem 1.25rem 4rem;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+main { max-width: 46rem; margin: 0 auto; }
+
+h1 {
+  margin: 0 0 0.4rem;
+  font-size: 1.55rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.tagline {
+  margin: 0 0 2rem;
+  color: var(--dim);
+  font-size: 0.95rem;
+  max-width: 34rem;
+}
+
+/* ---------------------------------------------------------------- form */
+
+form { display: flex; gap: 0.5rem; }
+
+input[type="text"] {
+  flex: 1;
+  padding: 0.7rem 0.85rem;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 1rem;
+}
+
+input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+button {
+  padding: 0.7rem 1.1rem;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+button:hover { border-color: var(--accent); color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: default; }
+
+.examples {
+  margin: 0.85rem 0 2.5rem;
+  color: var(--dim);
+  font-size: 0.85rem;
+  font-family: var(--mono);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  align-items: baseline;
+}
+
+.examples button {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
+  color: var(--dim);
+  border-color: transparent;
+  background: none;
+}
+
+/* -------------------------------------------------------------- answer */
+
+.answer {
+  border-left: 2px solid var(--accent);
+  padding: 0.2rem 0 0.2rem 1.1rem;
+  margin-bottom: 1.75rem;
+}
+
+#reference {
+  margin: 0 0 0.9rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  font-family: var(--mono);
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.verses p {
+  margin: 0 0 0.55rem;
+  text-wrap: pretty;
+}
+
+.verses .v {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--dim);
+  vertical-align: 0.15em;
+  margin-right: 0.4rem;
+}
+
+.full {
+  margin: 0.9rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--dim);
+}
+
+.full button {
+  padding: 0.1rem 0.4rem;
+  font-size: 0.72rem;
+  border-color: transparent;
+  background: none;
+  color: var(--dim);
+}
+
+/* --------------------------------------------------------------- trace */
+
+.trace {
+  margin-bottom: 1.1rem;
+  border-top: 1px solid var(--rule);
+  padding-top: 0.8rem;
+}
+
+.trace summary {
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--dim);
+  margin-bottom: 0.7rem;
+}
+
+.trace summary:hover { color: var(--accent); }
+
+table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 0.78rem; }
+
+th, td { text-align: left; padding: 0.22rem 0.5rem 0.22rem 0; vertical-align: top; }
+
+th { color: var(--dim); font-weight: 400; border-bottom: 1px solid var(--rule); }
+
+td.level { color: var(--dim); }
+td.choice { color: var(--ink); }
+td.conf { white-space: nowrap; }
+td.alt { color: var(--dim); }
+
+.bar {
+  display: inline-block;
+  width: 3.2rem;
+  height: 0.5rem;
+  margin-right: 0.45rem;
+  background: var(--rule);
+  border-radius: 1px;
+  overflow: hidden;
+  vertical-align: -0.05em;
+}
+
+.bar i { display: block; height: 100%; background: var(--accent); }
+
+/* ---------------------------------------------------------------- meta */
+
+.meta, .status {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--dim);
+}
+
+.status {
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--panel);
+  margin-bottom: 1.5rem;
+}
+
+.status.error { border-color: #6b2f2f; color: #e0a0a0; }
+
+footer {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.78rem;
+  color: var(--dim);
+}
+
+footer a { color: var(--dim); }
+
+@media (max-width: 30rem) {
+  body { padding: 2rem 1rem 3rem; font-size: 16px; }
+  form { flex-direction: column; }
+  .examples { font-size: 0.8rem; }
+}

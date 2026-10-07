@@ -1,0 +1,10 @@
+{
+  "description": "keyed james bible — turn a question into a span of KJV verses",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "python3 server.py",
+    "ask": "python3 ask.py",
+    "corpus": "python3 scripts/build_corpus.py"
+  }
+}
